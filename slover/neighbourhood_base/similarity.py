@@ -50,9 +50,10 @@ def pearson(i, j):
 
 
 rate_cos = np.zeros((19342, 19342))
-rate_cos_s = np.zeros((19342, 19342))
-rate_pearson = np.zeros((19342, 19342))
+# rate_cos_s = np.zeros((19342, 19342))
+# rate_pearson = np.zeros((19342, 19342))
 
+print('----------------------cosine start------------------------------')
 for i in range(19342):
     for j in range(19342):
         if i == j:
@@ -61,26 +62,26 @@ for i in range(19342):
             rate_cos[i, j] = rate_cos[j, i]
         else:
             rate_cos[i, j] = cosine_sim(i, j)
+print('----------------------cosine end------------------------------')
+# for i in range(19342):
+#     for j in range(19342):
+#         if i == j:
+#             rate_cos_s[i, j] = 1
+#         elif rate_cos_s[j, i] != 0:
+#             rate_cos_s[i, j] = rate_cos_s[j, i]
+#         else:
+#             rate_cos_s[i, j] = cosine_sim_s(i, j)
+#
+# for i in range(19342):
+#     for j in range(19342):
+#         if i == j:
+#             rate_pearson[i, j] = 1
+#         elif rate_pearson[j, i] != 0:
+#             rate_pearson[i, j] = rate_pearson[j, i]
+#         else:
+#             rate_pearson[i, j] = pearson(i, j)
 
-for i in range(19342):
-    for j in range(19342):
-        if i == j:
-            rate_cos_s[i, j] = 1
-        elif rate_cos_s[j, i] != 0:
-            rate_cos_s[i, j] = rate_cos_s[j, i]
-        else:
-            rate_cos_s[i, j] = cosine_sim_s(i, j)
-
-for i in range(19342):
-    for j in range(19342):
-        if i == j:
-            rate_pearson[i, j] = 1
-        elif rate_pearson[j, i] != 0:
-            rate_pearson[i, j] = rate_pearson[j, i]
-        else:
-            rate_pearson[i, j] = pearson(i, j)
-
-iid_index = pd.read_csv('../../data/rate_mat.csv', index_col=0).columns
+iid_index = pd.read_csv('../../data/rate_mat.csv').columns
 pd.DataFrame(rate_cos, index=iid_index, columns=iid_index).to_csv('../../data/rate_cos.csv')
-pd.DataFrame(rate_cos_s, index=iid_index, columns=iid_index).to_csv('../../data/rate_cos_s.csv')
-pd.DataFrame(rate_pearson, index=iid_index, columns=iid_index).to_csv('../../data/rate_pearson.csv')
+# pd.DataFrame(rate_cos_s, index=iid_index, columns=iid_index).to_csv('../../data/rate_cos_s.csv')
+# pd.DataFrame(rate_pearson, index=iid_index, columns=iid_index).to_csv('../../data/rate_pearson.csv')
