@@ -1,6 +1,6 @@
 # coding=utf-8
 import pandas as pd
-
+import matplotlib.pyplot as plt
 #候选咨询
 news = pd.read_csv('../data/news_info.csv')
 # print len(news) #56342
@@ -44,6 +44,35 @@ def show_new_user_item_count():
     print (
     '约' + str(len(users) - len( pd.merge(train.drop_duplicates('user_id') ,users,on='user_id' ) )) + '用户存在冷启动问题')  # 12493
 
+def show_item_display_time( ):
+    train = pd.read_csv('../data/train.csv')
+    item_id_list = []
+    start_time_list = []
+    end_time_list = []
+    # pv_list = []
+    df = pd.DataFrame()
+    for  item_id,group in  train.groupby(['item_id'],as_index=False):
+        start = group['action_time'].min()
+        end = group['action_time'].max()
+        # pv = group['view'].count()
+        item_id_list.append( item_id )
+        start_time_list.append( start )
+        end_time_list.append( end )
+    df['item_id'] = item_id_list
+    df['start_time'] = start_time_list
+    df['end_time'] = end_time_list
+    df['diff'] = df['end_time'] - df['start_time']
+    df.to_csv( '../data/item_display.csv',index=False )
+    df['diff'].plot()
+    plt.show()
+
+def show_item_display_time():
+    train = pd.read_csv('../data/train.csv')
+    start = train['action_time'].min()
+    end = train['action_time'].max()
+    ds_list = range( start,end,step=1*60*60 )
+
 
 if __name__ == "__main__":
-    show_new_user_item_count()
+    # show_new_user_item_count()
+    show_item_display_time()
