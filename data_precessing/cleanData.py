@@ -36,9 +36,7 @@ def get_rating_matrix(  ):
     train = train[['user_id','item_id','action_type']]
     train['weight'] = train['action_type'].apply(lambda p:1 if p in ['view' 'deep_view'] else 5)
     train = train[['user_id','item_id','weight']].groupby( ['user_id','item_id'],as_index=False ).sum()
-    #归一化,整体平移下，保证最小权重有意思
-    train['weight'] = 0.1+( train['weight'] - train['weight'].min() ) / ( train['weight'].max() - train['weight'].min() )
-    return train
+    train.to_csv('../data/rating.csv',index=None)
 
 def get_rating_matrix_cate( ):
     cates = os.listdir('../data/cate/')
@@ -47,8 +45,6 @@ def get_rating_matrix_cate( ):
         train_cate = train_cate[['user_id','item_id','action_type']]
         train_cate['weight'] = train_cate['action_type'].apply(lambda p:1 if p in ['view' 'deep_view'] else 5)
         train_cate = train_cate[['user_id','item_id','weight']].groupby( ['user_id','item_id'],as_index=False ).sum()
-        #归一化,整体平移下，保证最小权重有意思
-        train_cate['weight'] = 0.1+( train_cate['weight'] - train_cate['weight'].min() ) / ( train_cate['weight'].max() - train_cate['weight'].min() )
         train_cate.to_csv('../data/rating/rating_{0}.csv'.format( fpath ),index=None)
 
 
@@ -60,7 +56,8 @@ def get_item_matrix( ):
 
 if __name__ == "__main__":
     # cate_split()
-    get_rating_matrix_cate()
+    get_rating_matrix()
+    # get_rating_matrix_cate()
 
     # ratrings = get_rating_matrix()
     # ratrings.to_csv('../data/rating.csv',index=None)
