@@ -51,9 +51,37 @@ def r3():
 def help( p ):
     ss = str(p).split(",")
     rec,viewed = ss[0],ss[1]
-    rec = list( set(rec.split(" ")) - set( viewed.split(" ") ) )[:5]
-    rec = " ".join(rec)
+    rec = list( rec.split(" ") )
+
+    size = 0
+    for i in rec:
+        size += 1
+        if i in list( set( viewed.split(" ") ) ):
+            rec.remove( i )
+            size -= 1
+        if size == 5:break
+
+    rec = " ".join(rec[:5])
     return rec
+
+def get_r4(  ):
+    train = pd.read_csv('../data/train.csv')
+    item_view = pd.read_csv('../data/filterItems.csv')
+    users = pd.read_csv('../data/candidate.txt')
+
+    #选择距end时间2小时内被view过的，其余的训练集item假定已经失去了时效，不再推荐
+    end = train['action_time'].max()
+    df = train[ train.action_time >= end-2*60*60 ][['user_id','item_id']]
+    df = df.append( item_view )
+    df = pd.merge( users,df,on='user_id' )
+    df.groupby( ['item_id'],as_index=False ).count().sort_values( ['user_id'],ascending=False )
+
+    recItems = " ".join( list(df['item_id'].head(10).values) )
+    users['item_id'] = recItems
+    rec = pd.merge(users,item_view,how='left', on='user_id').fillna("")
+    rec['item_id'] = rec['item_id_x'] + "," + rec['item_id_y']
+    rec['item_id'] = rec['item_id'].apply(help)
+    users[['user_id', 'item_id']].drop_duplicates("user_id").to_csv('../result/result.csv', index=False, header=False)
 
 
 if __name__ == "__main__":

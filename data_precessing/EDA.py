@@ -27,7 +27,7 @@ train_items = set( train['item_id'].unique() )
 new_items = all_items - train_items
 new_items = list(new_items)
 # print len(new_items) #15093
-print new_items[:5]
+# print new_items[:5]
 
 #待推荐用户
 users = pd.read_csv('../data/candidate.txt')
@@ -70,7 +70,11 @@ def show_item_display_time():
     train = pd.read_csv('../data/train.csv')
     start = train['action_time'].min()
     end = train['action_time'].max()
-    ds_list = range( start,end,step=1*60*60 )
+    train['ds'] = train['action_time'].apply( lambda x: start+( x-start )/3600*3600 )
+    df = train[['user_id','item_id','ds']].groupby( ['item_id','ds'],as_index=False ).count()
+    df.columns = ['item_id','ds','pv']
+    df[['item_id','ds','pv']].sort_values( ['item_id','ds','pv'] ).to_csv( '../data/item_ds_pv.csv',index=False )
+
 
 
 if __name__ == "__main__":
