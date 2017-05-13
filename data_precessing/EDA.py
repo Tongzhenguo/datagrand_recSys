@@ -33,6 +33,7 @@ new_items = list(new_items)
 users = pd.read_csv('../data/candidate.txt')
 # print len( users ) #29999
 
+
 def show_new_user_item_count():
     #用户的冷启动问题比物品的冷启动问题严重
     print len(news) #56342
@@ -75,8 +76,32 @@ def show_item_display_time():
     df.columns = ['item_id','ds','pv']
     df[['item_id','ds','pv']].sort_values( ['item_id','ds','pv'] ).to_csv( '../data/item_ds_pv.csv',index=False )
 
+def show_cate_diff():
+    item = pd.read_csv('../data/news_info.csv')
+    item_display = pd.read_csv('../data/item_display.csv')
+    item_ds_pv = pd.read_csv('../data/item_ds_pv.csv')
+    df_mean = pd.merge(item, item_display, on='item_id')[['cate_id', 'diff']].groupby(
+        ['cate_id'],as_index=False).mean()
+    df_min = pd.merge(item, item_display, on='item_id')[['cate_id', 'diff']].groupby(
+        ['cate_id'],as_index=False).min()
+    df_max = pd.merge(item, item_display, on='item_id')[['cate_id', 'diff']].groupby(
+        ['cate_id'],as_index=False).max()
+    df_end_time = pd.merge(item, item_display, on='item_id')[['cate_id', 'end_time']].groupby(
+        ['cate_id'],as_index=False).max()
+    df = pd.merge( df_mean,df_min,on='cate_id' )
+    df = pd.merge( df,df_max,on='cate_id' )
+    df = pd.merge(df, df_end_time, on='cate_id')
+    df.columns = ['cate_id','df_mean','df_min','df_max','df_end_time']
+    df['df_mean'] = df['df_mean'].apply(int)
+    df['df_min'] = df['df_min'].apply(int)
+    df['df_max'] = df['df_max'].apply(int)
+    cate_pv = pd.merge(item, item_ds_pv,on='item_id')[['cate_id', 'pv']].groupby(['cate_id'],as_index=False).sum()
+    df = pd.merge( df,cate_pv,on='cate_id' )
+    df.sort_values(['pv','df_mean','df_max','df_end_time'],ascending=False).to_csv('../data/cate_desc.csv',index=False)
 
+def show_user_cate
 
 if __name__ == "__main__":
     # show_new_user_item_count()
-    show_item_display_time()
+    # show_item_display_time()
+    show_cate_diff()
