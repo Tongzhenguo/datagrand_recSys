@@ -1,52 +1,40 @@
 # coding=utf-8
 """
     为用户推荐最热的咨询，如果用户以前看过不会再推荐
-    根据测试集中的行为数据去搞
 """
 import pandas as pd
+import time
+
 
 def r1():
+    print('topHot 推荐')
     train = pd.read_csv('../data/train.csv')
-    hot_item = train[['user_id','item_id']].groupby(['item_id'],as_index=False).count().sort_values(['user_id'],ascending=False)
-    hot_item.columns = ['item_id','count']
-    hot_item = list( hot_item['item_id'].values )[:5]
+    train['item_id'] = train['item_id'].apply(str)
+    hot_item = train[['user_id', 'item_id']].groupby(['item_id'], as_index=False).count().sort_values(['user_id'],ascending=False)[['item_id']]
+    print('选择距end时间2小时内被view过的，其余的训练集item假定已经失去了时效，不再推荐')
+    end = time.mktime(time.strptime('2017-2-18 22:00:00', '%Y-%m-%d %H:%M:%S'))
+    item_display = pd.read_csv('../data/item_display.csv',dtype='str')
+    item_display['end_time'] = item_display['end_time'].apply(lambda x: time.mktime(time.strptime(x, '%Y%m%d %H:%M:%S')))
+    news = item_display[(item_display['end_time'] >= end)][['item_id']]
+    hot_item = pd.merge(news, hot_item, on='item_id')
+    rec = pd.read_csv('../data/candidate.txt')
+    rec['item_id'] = " ".join( list(hot_item['item_id'].values)[:20] )
 
-    users = pd.read_csv('../data/candidate.txt')
-    recItems = " ".join( map( str, hot_item) )
-    # result = open('../result/result.csv','wb')
-    users['item_id'] = recItems
-    users.to_csv('../result/result.csv',index=False)
-
-def r2():
-    train = pd.read_csv('../data/train.csv')
-    hot_item = train[['user_id', 'item_id']].groupby(['item_id'], as_index=False).count().sort_values(['user_id'],
-                                                                                                      ascending=False)
-    hot_item.columns = ['item_id', 'count']
-    hot_item = list(hot_item['item_id'].values)[:100]
-    recItems = " ".join(map(str, hot_item))
-    users = pd.read_csv('../data/candidate.txt')
-    users['item_id'] = recItems
-
-    test = pd.read_csv('../data/test.txt')
-    rec = pd.merge( users,test,how='left',on='user_id' ).fillna("")
+    print('过滤掉用户已经看过的')
+    user_list = []
+    viewed_list = []
+    for user, group in train[['user_id', 'item_id']].groupby(['user_id']):
+        user_list.append(user)
+        viewed_list.append(" ".join(list(group['item_id'].values)))
+    user_viewed = pd.DataFrame()
+    user_viewed['user_id'] = user_list
+    user_viewed['item_id'] = viewed_list
+    rec = pd.merge(rec, user_viewed, how='left', on='user_id').fillna("")  # item_view
     rec['item_id'] = rec['item_id_x'] + "," + rec['item_id_y']
     rec['item_id'] = rec['item_id'].apply(help)
-    rec[['user_id','item_id']].drop_duplicates("user_id").to_csv('../result/result.csv', index=False,header=False)
+    rec = rec[['user_id', 'item_id']]
 
-def r3():
-    filterItems = pd.read_csv('../data/filterItems.csv')
-    hot_item = filterItems[['user_id', 'item_id']].groupby(['item_id'], as_index=False).count().sort_values(['user_id'],
-                                                                                                ascending=False)
-    hot_item = list(hot_item['item_id'].values)[:10]
-    recItems = " ".join(map(str, hot_item))
-    users = pd.read_csv('../data/candidate.txt')
-    users['item_id'] = recItems
-
-    test = pd.read_csv('../data/test.txt')
-    rec = pd.merge(users, test, how='left', on='user_id').fillna("")
-    rec['item_id'] = rec['item_id_x'] + "," + rec['item_id_y']
-    rec['item_id'] = rec['item_id'].apply(help)
-    rec[['user_id', 'item_id']].drop_duplicates("user_id").to_csv('../result/result.csv', index=False, header=False)
+    rec.to_csv('../result/result.csv',index=False,header=False) #0.000166
 
 def help( p ):
     ss = str(p).split(",")
@@ -64,29 +52,8 @@ def help( p ):
     rec = " ".join(rec[:5])
     return rec
 
-def get_r4(  ):
-    train = pd.read_csv('../data/train.csv')
-    item_view = pd.read_csv('../data/filterItems.csv')
-    users = pd.read_csv('../data/candidate.txt')
-
-    #选择距end时间2小时内被view过的，其余的训练集item假定已经失去了时效，不再推荐
-    end = train['action_time'].max()
-    df = train[ train.action_time >= end-2*60*60 ][['user_id','item_id']]
-    df = df.append( item_view )
-    df = pd.merge( users,df,on='user_id' )
-    df.groupby( ['item_id'],as_index=False ).count().sort_values( ['user_id'],ascending=False )
-
-    recItems = " ".join( list(df['item_id'].head(10).values) )
-    users['item_id'] = recItems
-    rec = pd.merge(users,item_view,how='left', on='user_id').fillna("")
-    rec['item_id'] = rec['item_id_x'] + "," + rec['item_id_y']
-    rec['item_id'] = rec['item_id'].apply(help)
-    users[['user_id', 'item_id']].drop_duplicates("user_id").to_csv('../result/result.csv', index=False, header=False)
-
-
 if __name__ == "__main__":
-    # r2()
-    r3()
+    r1()
 
 
 
