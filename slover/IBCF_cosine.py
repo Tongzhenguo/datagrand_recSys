@@ -10,6 +10,7 @@ import os
     去掉已经view的
 """
 
+#经验值
 def get_action_weight( x):
     if x == 'view': return 1
     if x == 'deep_view': return 5
@@ -17,6 +18,7 @@ def get_action_weight( x):
     if x == 'comment': return 5
     if x == 'collect':return 15
     else:return 1
+
 def get_rating_matrix(  ):
     path = '../cache/rating_weight.pkl'
     if os.path.exists(path):
@@ -38,6 +40,7 @@ def get_rating_matrix(  ):
         pickle.dump( train,open(path,'wb'),True ) #dump 时如果指定了 protocol 为 True，压缩过后的文件的大小只有原来的文件的 30%
     return train
 
+#可以优化空间，存储成三角矩阵
 def get_concur_mat(  ):
     path = "../cache/get_concur_mat.pkl"
     if os.path.exists(path):
@@ -105,13 +108,13 @@ def help( p ):
     rec = " ".join(rec[:5])
     return rec
 
-def Recommendation(k=5):
+def Recommendation():
     train = pd.read_csv('../data/train.csv')
     train['item_id'] = train['item_id'].apply(str)
     print('计算评分矩阵')
     rate_mat = get_rating_matrix()
     rate_mat['item_id'] = rate_mat['item_id'].apply(str)
-    print('计算cosine相似度')
+    print('计算相似度')
     iid_iid_sim = get_concur_sim()
     iid_iid_sim['item1'] = iid_iid_sim['item1'].apply(str)
     iid_iid_sim['item2'] = iid_iid_sim['item2'].apply(str)
@@ -142,7 +145,7 @@ def Recommendation(k=5):
     rec['user_id'] = user_list
     rec['item_id'] = rec_items_list
 
-    print('还有部分的冷启动用户,推荐18时之后的topHot20')
+    print('还有部分的冷启动用户,推荐18时之后的topHot20') #这里也可改进
     train_h18 = train[train.action_time >= time.mktime(time.strptime('2017-2-18 18:00:00', '%Y-%m-%d %H:%M:%S'))]
     topHot = train_h18.groupby(['item_id'], as_index=False).count().sort_values(['action_time'], ascending=False).head(15)[
         'item_id'].values
@@ -162,7 +165,4 @@ def Recommendation(k=5):
     rec.drop_duplicates('user_id').to_csv('../result/result.csv', index=None, header=None) #0.009296
 
 if __name__ == "__main__":
-    # get_rating_matrix()
-    # get_concur_mat()
-    # get_concur_sim()
     Recommendation()
