@@ -26,6 +26,11 @@ def desc():
 
     #行为类型
     print( ( train['action_type'].unique() ) )#['view' 'deep_view' 'share' 'collect' 'comment']
+    print( float(len( train[ train['action_type']=='view' ]))  / len(train[ train['action_type']=='deep_view' ] ) ) #1.26020722627
+    print(len(train[train['action_type'] == 'view']) / len(train[train['action_type'] == 'share'])) #3955
+    print(len(train[train['action_type'] == 'view']) / len(train[train['action_type'] == 'collect'])) #166
+    print(len(train[train['action_type'] == 'view']) / len(train[train['action_type'] == 'comment'])) #420
+
 
 
     #最新资讯
@@ -72,13 +77,13 @@ def show_item_display_time( ):
 def show_ds_pv():
     train = pd.read_csv('../data/train.csv')
     start = train['action_time'].min()
-    end = train['action_time'].max()
     train['ds'] = train['action_time'].apply( lambda x: start+( x-start )/3600*3600 )
     df = train[['user_id','item_id','ds']].groupby( ['item_id','ds'],as_index=False ).count()
     df.columns = ['item_id','ds','pv']
     df = df[['item_id','ds','pv']].sort_values( ['item_id','ds','pv'] )
     df['ds'] = df['ds'].apply( lambda x: time.strftime('%Y%m%d %H:%M:%S',time.localtime(x) ) )
     df.to_csv( '../data/item_ds_pv.csv',index=False )
+
 
 def show_cate_diff():
     item = pd.read_csv('../data/news_info.csv')
@@ -113,7 +118,21 @@ def show_hh_pv():
     plt.bar(range(0,24),list(hh_pv['pv'].values),fc='g')
     plt.show() #高峰期：6-9，19-22
 
+def show_user_cate( train ):
+    train = train[['user_id','cate_id','action_type']].groupby(['user_id','cate_id']).count().instack().fillna(0)
+    train.columns = [ "cate_"+cate_id for cate_id in list(train.columns) ]
+    train = train.reset_index()
+    return train
 
+def show_item_cate_dummy( all_news_info ):
+    df_dummy =pd.get_dummies( all_news_info['cate_id'],prefix='cate' )
+    df = pd.concat( [ all_news_info[['item_id','timestamp']],df_dummy ],axis=1,join='inner' )
+    return df
+
+# def show_item_pv_hh( train,hour_list=[1,2,3,4,5,6,12,24,72] ):
+#     for i in hour_list:
+#         time.mktime( time.strftime('') )
+#         train[ train['action_time']> ]
 
 if __name__ == "__main__":
     desc()

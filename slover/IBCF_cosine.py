@@ -10,13 +10,13 @@ import os
     去掉已经view的
 """
 
-#经验值
+#w(x) = log( 1+N('view') / N(x) ),实际评分和w(x)=1一样
 def get_action_weight( x):
     if x == 'view': return 1
-    if x == 'deep_view': return 5
-    if x == 'share':return 10
-    if x == 'comment': return 5
-    if x == 'collect':return 15
+    if x == 'deep_view': return 2
+    if x == 'share':return 8
+    if x == 'comment': return 6
+    if x == 'collect':return 5
     else:return 1
 
 def get_rating_matrix(  ):

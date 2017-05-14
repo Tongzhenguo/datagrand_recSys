@@ -8,6 +8,7 @@ import time
 
 """
     去掉已经view的
+    部分历史登录用户需要全量计算相似度
 
 """
 
@@ -19,12 +20,12 @@ def get_action_weight( x):
     if x == 'collect':return 15
     else:return 1
 
-def get_rating_matrix(  ):
-    path = '../cache/rating_all.pkl'
+def get_rating_matrix( start=1487174400.0 ):
+    path = '../cache/rating_all_{start}.pkl'.format(start=start)
     if os.path.exists(path):
         train = pickle.load(open(path, "rb"))
     else:
-        start = time.mktime(time.strptime('2017-2-18 18:00:00', '%Y-%m-%d %H:%M:%S'))  # 测试最近6个小时的，线上分数最高
+        start = time.mktime(time.strptime('2017-2-16 00:00:00', '%Y-%m-%d %H:%M:%S'))  # 测试最近6个小时的，线上分数最高
         train = pd.read_csv('../data/train.csv')
         train = train[(train['action_time'] >= start)][['user_id', 'item_id', 'action_type']]
 
@@ -32,7 +33,7 @@ def get_rating_matrix(  ):
         item_display['end_time'] = item_display['end_time'].apply(
             lambda x: time.mktime(time.strptime(x, '%Y%m%d %H:%M:%S')))
         # 选择距end时间2小时内被view过的，其余的训练集item假定已经失去了时效，不再推荐
-        end = time.mktime(time.strptime('2017-2-18 22:00:00', '%Y-%m-%d %H:%M:%S'))
+        end = time.mktime(time.strptime('2017-2-17 18:00:00', '%Y-%m-%d %H:%M:%S'))
         news = item_display[(item_display['end_time'] >= end)][['item_id']]
         train = pd.merge(train, news, on='item_id')[['user_id', 'item_id', 'action_type']]
 
@@ -41,12 +42,12 @@ def get_rating_matrix(  ):
         pickle.dump(train, open(path, 'wb'), True)  # dump 时如果指定了 protocol 为 True，压缩过后的文件的大小只有原来的文件的 30%
     return train
 
-def get_concur_mat(  ):
-    path = "../cache/concur_mat.pkl"
+def get_concur_mat( start=1487174400.0 ):
+    path = "../cache/concur_mat_{start}.pkl".format(start=start)
     if os.path.exists(path):
         sim_mat = pickle.load(open(path, "rb"))
     else:
-        rat_mat = get_rating_matrix()
+        rat_mat = get_rating_matrix(start)
         sim_mat = pd.DataFrame()
         item1_list = []
         item2_list = []
@@ -65,13 +66,13 @@ def get_concur_mat(  ):
         pickle.dump(sim_mat, open(path, 'wb'), True)
     return sim_mat
 
-def get_concur_sim(  ):
-    path = "../cache/concur_sim_mat.pkl"
+def get_concur_sim(  start=1487174400.0  ):
+    path = "../cache/concur_sim_mat_{start}.pkl".format(start=start)
     if os.path.exists(path):
         sim_mat = pickle.load(open(path, "rb"))
     else:
-        concur_mat = get_concur_mat()
-        rat_mat = get_rating_matrix()
+        concur_mat = get_concur_mat(start)
+        rat_mat = get_rating_matrix(start)
         item_vector = rat_mat[['item_id','user_id']].groupby(['item_id'],as_index=False).count()
         item_vector.index = item_vector['item_id']
         item_vector.columns = ['item_id','count']
@@ -139,17 +140,17 @@ def Recommendation(k=5):
     rec['user_id'] = user_list
     rec['item_id'] = rec_items_list
 
-    print('还有部分的冷启动用户,推荐18时之后的topHot15')
-    train_h18 = train[train.action_time >= time.mktime(time.strptime('2017-2-18 18:00:00', '%Y-%m-%d %H:%M:%S'))]
-    topHot = \
-    train_h18.groupby(['item_id'], as_index=False).count().sort_values(['action_time'], ascending=False).head(15)[
-        'item_id'].values
-    oldrec = users
-    oldrec['oldrec_item'] = [" ".join(list(topHot))] * len(oldrec)
-    oldrec = pd.merge(oldrec, rec, how='left', on='user_id', ).fillna(0)
-    oldrec = oldrec[oldrec.item_id == 0][['user_id', 'oldrec_item']]
-    oldrec.columns = ['user_id', 'item_id']
-    rec = rec.append(oldrec)
+    # print('还有部分的冷启动用户,推荐18时之后的topHot15')
+    # train_h18 = train[train.action_time >= time.mktime(time.strptime('2017-2-18 18:00:00', '%Y-%m-%d %H:%M:%S'))]
+    # topHot = \
+    # train_h18.groupby(['item_id'], as_index=False).count().sort_values(['action_time'], ascending=False).head(15)[
+    #     'item_id'].values
+    # oldrec = users
+    # oldrec['oldrec_item'] = [" ".join(list(topHot))] * len(oldrec)
+    # oldrec = pd.merge(oldrec, rec, how='left', on='user_id', ).fillna(0)
+    # oldrec = oldrec[oldrec.item_id == 0][['user_id', 'oldrec_item']]
+    # oldrec.columns = ['user_id', 'item_id']
+    # rec = rec.append(oldrec)
 
     print('过滤掉用户已经看过的')
     rec = pd.merge(rec, user_viewed, how='left', on='user_id').fillna("")  # item_view
@@ -159,6 +160,5 @@ def Recommendation(k=5):
 
     rec.drop_duplicates('user_id').to_csv('../result/result.csv', index=None, header=None) #0.011010
 
-if __name__ == "__main__":
 
-    # Recommendation()
+Recommendation()
