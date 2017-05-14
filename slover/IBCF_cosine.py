@@ -24,7 +24,7 @@ def get_rating_matrix(  ):
     if os.path.exists(path):
         train = pickle.load(open(path, "rb"))
     else:
-        start = time.mktime(time.strptime('2017-2-17 19:00:00', '%Y-%m-%d %H:%M:%S')) #一个资讯的平均生命周期是30h
+        start = time.mktime(time.strptime('2017-2-18 18:00:00', '%Y-%m-%d %H:%M:%S')) #测试最近6个小时的，线上分数最高
         train = pd.read_csv('../data/train.csv')
         train = train[ (train['action_time']>=start) ][['user_id', 'item_id', 'action_type']]
 
@@ -162,7 +162,7 @@ def Recommendation():
     rec['item_id'] = rec['item_id'].apply(help)
     rec = rec[['user_id','item_id']]
 
-    rec.drop_duplicates('user_id').to_csv('../result/result.csv', index=None, header=None) #0.009296
+    rec.drop_duplicates('user_id').to_csv('../result/result.csv', index=None, header=None) #0.009568
 
 if __name__ == "__main__":
     Recommendation()

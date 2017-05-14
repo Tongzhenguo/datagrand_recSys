@@ -24,19 +24,21 @@ def get_rating_matrix(  ):
     if os.path.exists(path):
         train = pickle.load(open(path, "rb"))
     else:
-        end = time.mktime(time.strptime('2017-2-18 22:00:00', '%Y-%m-%d %H:%M:%S'))
-
+        start = time.mktime(time.strptime('2017-2-18 18:00:00', '%Y-%m-%d %H:%M:%S'))  # 测试最近6个小时的，线上分数最高
         train = pd.read_csv('../data/train.csv')
-        train = train[['user_id', 'item_id', 'action_type']]
-        item_display = pd.read_csv('../data/item_display.csv')
-        item_display['end_time'] = item_display['end_time'].apply( lambda x: time.mktime(time.strptime(x, '%Y%m%d %H:%M:%S')) )
-        # 选择距end时间2小时内被view过的，其余的训练集item假定已经失去了时效，不再推荐
-        news = item_display[ (item_display['end_time']>=end) ][['item_id']] #10216
-        train = pd.merge(train, news, on='item_id')[['user_id','item_id','action_type']]
+        train = train[(train['action_time'] >= start)][['user_id', 'item_id', 'action_type']]
 
-        train['weight'] = train['action_type'].apply( get_action_weight )
-        train = train[['user_id','item_id','weight']].groupby( ['user_id','item_id'],as_index=False ).sum()
-        pickle.dump( train,open(path,'wb'),True ) #dump 时如果指定了 protocol 为 True，压缩过后的文件的大小只有原来的文件的 30%
+        item_display = pd.read_csv('../data/item_display.csv')
+        item_display['end_time'] = item_display['end_time'].apply(
+            lambda x: time.mktime(time.strptime(x, '%Y%m%d %H:%M:%S')))
+        # 选择距end时间2小时内被view过的，其余的训练集item假定已经失去了时效，不再推荐
+        end = time.mktime(time.strptime('2017-2-18 22:00:00', '%Y-%m-%d %H:%M:%S'))
+        news = item_display[(item_display['end_time'] >= end)][['item_id']]
+        train = pd.merge(train, news, on='item_id')[['user_id', 'item_id', 'action_type']]
+
+        train['weight'] = train['action_type'].apply(get_action_weight)
+        train = train[['user_id', 'item_id', 'weight']].groupby(['user_id', 'item_id'], as_index=False).sum()
+        pickle.dump(train, open(path, 'wb'), True)  # dump 时如果指定了 protocol 为 True，压缩过后的文件的大小只有原来的文件的 30%
     return train
 
 def get_concur_mat(  ):
@@ -134,11 +136,10 @@ def Recommendation_s( k=5):
 
         user_list.append(user_id)
         rec_items_list.append(rec_items)
-        # print('------------------------')
     rec['user_id'] = user_list
     rec['item_id'] = rec_items_list
 
-    print('还有部分的冷启动用户,推荐18时之后的topHot20')
+    print('还有部分的冷启动用户,推荐18时之后的topHot15')
     train_h18 = train[train.action_time >= time.mktime(time.strptime('2017-2-18 18:00:00', '%Y-%m-%d %H:%M:%S'))]
     topHot = \
     train_h18.groupby(['item_id'], as_index=False).count().sort_values(['action_time'], ascending=False).head(15)[
@@ -156,7 +157,7 @@ def Recommendation_s( k=5):
     rec['item_id'] = rec['item_id'].apply(help)
     rec = rec[['user_id', 'item_id']]
 
-    rec.drop_duplicates('user_id').to_csv('../result/result.csv', index=None, header=None) #0.006795
+    rec.drop_duplicates('user_id').to_csv('../result/result.csv', index=None, header=None) #0.011010
 
 
 Recommendation_s()

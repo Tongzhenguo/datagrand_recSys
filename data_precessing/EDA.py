@@ -10,10 +10,10 @@ mpl.rcParams['axes.unicode_minus'] = False
 
 def desc():
     news = pd.read_csv('../data/news_info.csv')
-    # print( len(news) )#41252
+    print( len(news) )#41252
 
     #资讯类别
-    # print( len( news['cate_id'].unique() ) ) #37
+    print( len( news['cate_id'].unique() ) ) #37
 
 
     train = pd.read_csv('../data/train.csv')
@@ -40,7 +40,7 @@ def desc():
     users = pd.read_csv('../data/candidate.txt')
     print( len( users ) )#28501
 
-    #用户的冷启动问题比物品的冷启动问题严重
+    #用户的冷启动问题
     print( ('约' + str(len(users) - len( pd.merge(train.drop_duplicates('user_id') ,users,on='user_id' ) )) + '用户存在冷启动问题')  )# 0
 
 def show_item_display_time( ):
@@ -116,7 +116,8 @@ def show_hh_pv():
 
 
 if __name__ == "__main__":
+    desc()
     # show_ds_pv()
-    show_item_display_time()
+    # show_item_display_time()
     # show_cate_diff()
     # show_hh_pv()
