@@ -26,7 +26,7 @@ def get_rating_matrix(  ):
     else:
         start = time.mktime(time.strptime('2017-2-18 18:00:00', '%Y-%m-%d %H:%M:%S')) #测试最近6个小时的，线上分数最高
         train = pd.read_csv('../data/train.csv')
-        train = train[ (train['action_time']>=start) ][['user_id', 'item_id', 'action_type']]
+        train = train[ (train['action_time']<start) ][['user_id', 'item_id', 'action_type']]
 
         item_display = pd.read_csv('../data/item_display.csv')
         item_display['end_time'] = item_display['end_time'].apply( lambda x: time.mktime(time.strptime(x, '%Y%m%d %H:%M:%S')) )
@@ -37,6 +37,7 @@ def get_rating_matrix(  ):
 
         train['weight'] = train['action_type'].apply( get_action_weight )
         train = train[['user_id','item_id','weight']].groupby( ['user_id','item_id'],as_index=False ).sum()
+        train.to_csv('../data/rat_mat_test.csv',index=False)
         pickle.dump( train,open(path,'wb'),True ) #dump 时如果指定了 protocol 为 True，压缩过后的文件的大小只有原来的文件的 30%
     return train
 
@@ -165,4 +166,4 @@ def Recommendation():
     rec.drop_duplicates('user_id').to_csv('../result/result.csv', index=None, header=None) #0.009568
 
 if __name__ == "__main__":
-    Recommendation()
+    get_rating_matrix()
