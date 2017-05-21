@@ -26,7 +26,7 @@ def get_rating_matrix(  ):
     else:
         start = time.mktime(time.strptime('2017-2-18 18:00:00', '%Y-%m-%d %H:%M:%S')) #测试最近6个小时的，线上分数最高
         train = pd.read_csv('../data/train.csv')
-        train = train[ (train['action_time']<start) ][['user_id', 'item_id', 'action_type']]
+        train = train[ (train['action_time']>start) ][['user_id', 'item_id', 'action_type']]
 
         item_display = pd.read_csv('../data/item_display.csv')
         item_display['end_time'] = item_display['end_time'].apply( lambda x: time.mktime(time.strptime(x, '%Y%m%d %H:%M:%S')) )
