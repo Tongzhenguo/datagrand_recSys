@@ -10,6 +10,14 @@ import pandas as pd
 #w(x) = log( 1+N('view') / N(x) ),实际评分和w(x)=1一样
 import time
 
+"""
+    基于矩阵分解的推荐算法
+    使用的台大开源的libMF包
+    先根据SGD优化MSE,得到用户矩阵和物品矩阵（脚本：libMF.sh）
+    然后计算每一个用户对每一个商品的评分，选择top20，去掉看过的，生成top5推荐列表
+    麻烦的是全量计算的时间复杂度非常高，而且效果还差
+    最终使用test中的top10筛选的候选物品
+"""
 
 def get_action_weight( x):
     if x == 'view': return 1

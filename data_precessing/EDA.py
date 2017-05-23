@@ -4,9 +4,53 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 #候选咨询
 import time
+import time
+import numpy as np
 
 mpl.rcParams['font.sans-serif'] = [u'SimHei']
 mpl.rcParams['axes.unicode_minus'] = False
+
+
+def time_stats(  ):
+    tr = pd.read_csv('data/train.csv')
+    tr['date'] = tr['action_time'].apply(lambda x: time.strftime('%Y%m%d%H', time.localtime(x)))
+    tr[['date', 'user_id']].drop_duplicates().groupby(['date'], as_index=False).count().sort_values(['date']).to_csv(
+        'data/date_uv.csv', index=False)
+
+    user_last_date = tr[['action_time', 'user_id']].groupby(['user_id'], as_index=False).max()
+    user_early_date = tr[['action_time', 'user_id']].groupby(['user_id'], as_index=False).min()
+    user_dur = pd.merge(user_early_date, user_last_date, on='user_id')
+    user_dur['dur'] = user_dur['action_time_y'] - user_dur['action_time_x']
+    user_dur.sort_values(['dur'], ascending=False)[['user_id', 'dur']].to_csv('data/user_dur.csv', index=False)
+
+    tr['pop'] = tr['action_time'].apply(lambda t: 1 / (1.0 + 0.1 * (1487433599 - t)))
+    item_pop = tr[['item_id', 'pop']].groupby(['item_id'], as_index=False).sum()
+    item_pop.to_csv('data/item_pop.csv', index=False)
+
+    item_pop['pop_lev'] = item_pop['pop'].apply( lambda x:int( 20*( x - 0.000039 ) / ( 4.962493 - 0.000039 ) ) )
+    item_pop[['item_id','pop_lev']].to_csv('data/item_pop_lev.csv', index=False)
+
+    item_last_date = tr[['action_time', 'item_id']].groupby(['item_id'], as_index=False).max()
+    item_early_date = tr[['action_time', 'item_id']].groupby(['item_id'], as_index=False).min()
+    item_dur = pd.merge(item_early_date, item_last_date, on='item_id')
+    item_dur['dur'] = item_dur['action_time_y'] - item_dur['action_time_x']
+
+    pop_lev_dur = pd.merge( item_pop[['item_id','pop_lev']],item_dur[['item_id','dur']],on='item_id' ).groupby( ['pop_lev'],as_index=False
+            ).mean()[['pop_lev','dur']]
+    pop_lev_dur.to_csv( 'data/pop_lev_dur.csv',index=False )
+
+def do_test():
+    test_csv =  pd.DataFrame()
+    user_list = []
+    item_list = []
+    test = pd.read_csv('../data/test.txt')
+    for u,group in test.groupby(['user_id'],as_index=False):
+        iid_list = group['item_id'].values[0].split(" ")
+        user_list.extend( [u]*len(iid_list) )
+        item_list.extend(iid_list)
+    test_csv['user_id'] = user_list
+    test_csv['item_id'] = item_list
+    test_csv.to_csv('../data/test.csv',index=False)
 
 def desc():
     news = pd.read_csv('../data/news_info.csv')
@@ -135,8 +179,9 @@ def show_item_cate_dummy( all_news_info ):
 #         train[ train['action_time']> ]
 
 if __name__ == "__main__":
-    desc()
+    # desc()
     # show_ds_pv()
     # show_item_display_time()
     # show_cate_diff()
     # show_hh_pv()
+    do_test()

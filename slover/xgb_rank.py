@@ -1,18 +1,22 @@
 # coding=utf-8
 import os
 import random
-
 import gc
 import pandas as pd
 import time
-
 import pickle
-
 from sklearn.model_selection import train_test_split
 import xgboost as xgb
 
-def randomSelectTrain( train ):
-    path = '../cache/train.pkl'
+"""
+    正负类选取：用户看过的是正类，负类是从所有物品集随机抽取的，物品集没有对物品去重，故被关注多的商品被选中的概率大
+    特征工程：
+        用户端有对各品类的交互次数，
+        物品端有发布时间，物品集中的index,阅读次数，3种流行度算法的得分，
+
+"""
+def randomSelectTrain( train,flag ):
+    path = '../cache/train_{flag}.pkl'.format( flag=flag )
     if os.path.exists( path ):
         data = pickle.load(open(path, "rb"))
     else:
@@ -22,8 +26,9 @@ def randomSelectTrain( train ):
         item_list = []
         label_list = []
         items_pool = list(train['item_id'].values)
+        rec = dict()
         for user, group in train.groupby(['user_id']):
-            rec = dict()
+            print( len(user_list) )
             viewed_item = list(group['item_id'].unique() )
             for item in viewed_item:
                 rec[item] = 1
@@ -42,6 +47,7 @@ def randomSelectTrain( train ):
                 rec[item] = 0
                 if n > len(viewed_item):
                     break
+            rec.clear()
         data['user_id'] = user_list
         data['item_id'] = item_list
         data['label'] = label_list
@@ -81,82 +87,100 @@ def show_item_display_time(train, all_news_info):
 
 
 def show_user_cate(train):
-    cate_list = ['1_1',
-     '1_10',
-     '1_11',
-     '1_12',
-     '1_13',
-     '1_14',
-     '1_15',
-     '1_16',
-     '1_17',
-     '1_18',
-     '1_19',
-     '1_2',
-     '1_23',
-     '1_27',
-     '1_28',
-     '1_3',
-     '1_4',
-     '1_5',
-     '1_6',
-     '1_7',
-     '1_8',
-     '1_9',
-     '3_1',
-     '3_13',
-     '3_15',
-     '3_19',
-     '3_2',
-     '3_20',
-     '3_23',
-     '3_3',
-     '3_6',
-     '3_7',
-     '3_8',
-     '3_9',
-     '4_1',
-     '4_5',
-     '6_1']
+    cate_list = list( train['cate_id'].unique() )
+    cate_list.sort()
     train = train[['user_id', 'cate_id', 'action_type']].groupby(['user_id', 'cate_id']).count().unstack().fillna(0)
     train.columns = ["cate_" + cate_id for cate_id in cate_list]
     train = train.reset_index()
     return train
 
-# def dayTop5( train,days=[16,17,18] ):
-#     train['day'] = train['action_time'].apply( lambda x:time.strftime('%d'),time.localtime(x)  )
-#     top_list = []
-#     d_list = []
-#     for d in days:
-#         d_top5 = train[ train['day']==d ].groupby( ['item_id',],as_index=False ).count()[['item_id','day']].sort_values(
-#             ['day'],ascending=False).head(5)['item_id'].values
-#         d_list = d_list.extend( [d]*5 )
-#         top_list = top_list.extend( list( d_top5 ) )
-#     pd.DataFrame()
-#     train['item_id'].apply(  )
+def get_item_action_count( train ):
+    train = train[[ 'item_id','user_id' ]].groupby( ['item_id'],as_index=False ).count()
+    train.columns = ['item_id','action_count']
+    return train
 
+def get_latent_factor_product( df ):
+    print(' 读取用户和物品矩阵 ')
+    user_mat = pd.read_csv('../data/user_mat.csv')
+    item_mat = pd.read_csv('../data/item_mat.csv')
+    user = pd.read_csv('../data/candidate.txt')
+    item_all = pd.read_csv('../data/all_news_info.csv')
+
+    print(' 将uniqid重新映射成user_id,item_id ')
+    uniqid_uid = user[['user_id']].sort_values(['user_id'])
+    uniqid_uid.index = range(len(uniqid_uid))
+    uniqid_uid = uniqid_uid['user_id'].to_dict()
+
+    uniqid_iid = item_all[['item_id']].sort_values(['item_id'])
+    uniqid_iid.index = range(len(uniqid_iid))
+    uniqid_iid = uniqid_iid['item_id'].to_dict()
+
+    user_mat['user_id'] = user_mat['uniqid'].apply( lambda x:uniqid_uid[x] )
+    item_mat['item_id'] = item_mat['uniqid'].apply( lambda x: uniqid_iid[x] )
+    df = pd.merge(df, user_mat, on='user_id')
+    df = pd.merge( df,item_mat,on='item_id' )
+    feat = ['user_id','item_id']+[ "factor_product_"+str(i) for i in range(35) ]
+    for i in range(35):
+        df[ "factor_product_"+str(i) ] = df[ 'factor_'+str(i)+'_x' ] * df[ 'factor_'+str(i)+'_y' ]
+    return df[ feat ]
+
+def get_pop( tr ):
+    tr['pop'] = tr['action_time'].apply(lambda t: 1 / (1.0 + 0.1 * (1487433599 - t)))
+    item_pop = tr[['item_id', 'pop']].groupby(['item_id'], as_index=False).sum()
+    return item_pop
 
 def make_train_set():
-    # test = pd.read_csv('../data/test.csv')
     train = pd.read_csv('../data/train.csv')
+    train = train[train.action_time >= time.mktime(time.strptime('2017-2-18 18:00:00', '%Y-%m-%d %H:%M:%S'))]
     item = pd.read_csv('../data/news_info.csv')
-    label = randomSelectTrain(train)
+    user = pd.read_csv('../data/candidate.txt')
+    train = pd.merge( user,train,on='user_id' )
+    label = randomSelectTrain(train,"train_all_item")
 
     user_feat = show_user_cate(train)
     df = pd.merge(label, user_feat, on='user_id')
+    item_action_count = get_item_action_count(train)
+    df = pd.merge( df,item_action_count,on='item_id' )
+    latent_factor_product = get_latent_factor_product(df)
+    df = pd.merge(df, latent_factor_product, on=( 'user_id','item_id' ))
+    item_pop = get_pop( train )
+    df = pd.merge( df,item_pop,on='item_id' )
 
-    item_index = item.reset_index()[['item_id','index']]
+    item_index = item.reset_index()[['item_id','index','timestamp']]
     df = pd.merge(df, item_index, on='item_id')
     index = df[['user_id','item_id']]
     label = df[['label']]
     data = df.drop(['user_id','item_id','label'],axis=1)
     return index,label,data
 
+def make_test_data():
+    train = pd.read_csv('../data/train.csv')
+    train = train[train.action_time >= time.mktime(time.strptime('2017-2-18 18:00:00', '%Y-%m-%d %H:%M:%S'))]
+    item = pd.read_csv('../data/news_info.csv')
+    user = pd.read_csv('../data/candidate.txt')
+    train = pd.merge(user, train, on='user_id')
+    train = pd.merge( item[['item_id']],train,on='item_id' )
+    label = randomSelectTrain(train,"test_item")
+
+    user_feat = show_user_cate(train)
+    df = pd.merge(label[ label['label']==0 ], user_feat, on='user_id')
+    item_action_count = get_item_action_count(train)
+    df = pd.merge(df, item_action_count, on='item_id')
+    latent_factor_product = get_latent_factor_product(df)
+    df = pd.merge(df, latent_factor_product, on=('user_id', 'item_id'))
+    item_pop = get_pop(train)
+    df = pd.merge(df, item_pop, on='item_id')
+
+    item_index = item.reset_index()[['item_id', 'index','timestamp']]
+    df = pd.merge(df, item_index, on='item_id')
+    index = df[['user_id', 'item_id']]
+    data = df.drop(['user_id', 'item_id', 'label'], axis=1)
+    return index, data
+
 def xgb_train( ):
     i = 0
     print('=========================training==============================')
     index,label,data = make_train_set()
-    print label.head()
     X_train, X_test, y_train, y_test = train_test_split(data, label, test_size=0.2, random_state=1990)
     # see how many neg/pos sample
     label = label.values
@@ -167,13 +191,13 @@ def xgb_train( ):
     dtest = xgb.DMatrix(X_test, label=y_test)
     param = {'max_depth': 3,
              'min_child_weight': 2, 'gamma': 0, 'subsample': 0.6, 'colsample_bytree': 0.8,
-              'eta': 0.1, 'lambda': 5,  # L2惩罚系数 'scale_pos_weight': scale_pos_weight,
+              'eta': 1, 'lambda': 5,  # L2惩罚系数 'scale_pos_weight': scale_pos_weight,
              'objective': 'binary:logistic', 'eval_metric': 'auc',
              'early_stopping_rounds': 100,  # eval 得分没有继续优化 就停止了
              'seed': 1990, 'nthread': 4, 'silent': 1
              }
     evallist = [(dtest, 'eval'), (dtrain, 'train')]
-    bst = xgb.train(param, dtrain, num_boost_round=50, evals=evallist)
+    bst = xgb.train(param, dtrain, num_boost_round=500, evals=evallist)
 
     bst.save_model(os.path.join('../model', ('xgb%02d.model' % i)))
     print('save feature score and feature information')
@@ -192,4 +216,43 @@ def xgb_train( ):
         f.writelines("feature,score\n")
         f.writelines(fs)
 
-xgb_train()
+
+def xgb_sub(  ):
+    i = 0
+    bst = xgb.Booster({'nthread': 4})  # init model
+    bst.load_model( '../model/xgb%02d.model' % i )  # load data
+
+    print('开始构造测试集---------------------------------------------------')
+    sub_index, sub_trainning_data = make_test_data()
+    test = xgb.DMatrix(sub_trainning_data)
+    sub_index['score'] = bst.predict(test)
+    sub_index = sub_index.sort_values( ['user_id','score'],ascending=False )
+    rec = pd.DataFrame()
+    user_list = []
+    rec_items_list = []
+    for user,group in sub_index.groupby( ['user_id'],as_index=False,sort=False ):
+        rec_items = " ".join(map(str, list(group['item_id'].head(5).values)))
+        user_list.append(user)
+        rec_items_list.append(rec_items)
+    rec['user_id'] = user_list
+    rec['item_id'] = rec_items_list
+
+    print('还有部分的冷启动用户,推荐test中的topHot5')  # 这里也可改进
+    users = pd.read_csv('../data/candidate.txt')
+    test = pd.read_csv('../data/test.csv')
+    topHot = \
+        test.groupby(['item_id'], as_index=False).count().sort_values(['user_id'], ascending=False).head(5)[
+        'item_id'].values
+    oldrec = users
+    oldrec['oldrec_item'] = [" ".join( map( str,list(topHot) ) )] * len(oldrec)
+    oldrec = pd.merge(oldrec, rec, how='left', on='user_id', ).fillna(0)
+    oldrec = oldrec[oldrec.item_id == 0][['user_id', 'oldrec_item']]
+    oldrec.columns = ['user_id', 'item_id']
+    rec = rec.append(oldrec)
+
+    rec = rec.drop_duplicates('user_id')
+    rec.to_csv('../result/result20170505.csv', index=None,header=None)
+
+if __name__ == '__main__':
+    xgb_train()
+    xgb_sub() #加了pop和隐因子反而下降了
