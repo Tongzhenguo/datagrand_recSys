@@ -14,11 +14,10 @@ import xgboost as xgb
         用户端有对各品类的交互次数，
         物品端有
            发布时间，
-           index,
            阅读次数，
-           3种流行度算法的得分，
+           2种流行度排名，
            隐性评分的avg,max,min,std,中位数
-
+        35个隐变量的乘积
 """
 
 def randomSelectTrain( train,flag ):
@@ -133,6 +132,7 @@ def get_latent_factor_product( df ):
 def get_pop( tr ):
     tr['pop'] = tr['action_time'].apply(lambda t: 1 / (1.0 + 0.1 * (1487433599 - t)))
     item_pop = tr[['item_id', 'pop']].groupby(['item_id'], as_index=False).sum()
+    item_pop['time_rank'] = item_pop['pop'].rank()
     return item_pop
 
 def get_hacker_news( tr,item ):
@@ -145,6 +145,7 @@ def get_hacker_news( tr,item ):
     item_pop['pop'] = item_pop['action_cnt'] / pow((item_pop['action_time'] - item_pop['timestamp']) / 3600,
                                                    5.8)  # 5.8等于10.8，优于1.8,2.8
     item_pop = item_pop[['item_id', 'pop']].groupby(['item_id'], as_index=False).sum()
+    item_pop['pop_rank'] = item_pop['pop'].rank()
     return item_pop
 
 def get_action_weight( x):
@@ -186,17 +187,15 @@ def make_train_set():
     df = pd.merge(label, user_feat, on='user_id')
     item_action_count = get_item_action_count(train)
     df = pd.merge( df,item_action_count,on='item_id' )
-    latent_factor_product = get_latent_factor_product(df)
-    df = pd.merge(df, latent_factor_product, on=( 'user_id','item_id' ))
+    # latent_factor_product = get_latent_factor_product(df)
+    # df = pd.merge(df, latent_factor_product, on=( 'user_id','item_id' ))
     item_pop = get_pop( train )
     df = pd.merge( df,item_pop,on='item_id' )
     item_pop_news = get_hacker_news(train, item)
     df = pd.merge( df,item_pop_news,on='item_id' )
-    rat_stats = get_item_rat_stats(train)
-    df = pd.merge(df, rat_stats)
+    # rat_stats = get_item_rat_stats(train)
+    # df = pd.merge(df, rat_stats)
 
-    item_index = item.reset_index()[['item_id','index','timestamp']]
-    df = pd.merge(df, item_index, on='item_id')
     index = df[['user_id','item_id']]
     label = df[['label']]
     data = df.drop(['user_id','item_id','label'],axis=1)
@@ -215,17 +214,15 @@ def make_test_data():
     df = pd.merge(label[ label['label']==0 ], user_feat, on='user_id')
     item_action_count = get_item_action_count(train)
     df = pd.merge(df, item_action_count, on='item_id')
-    latent_factor_product = get_latent_factor_product(df)
-    df = pd.merge(df, latent_factor_product, on=('user_id', 'item_id'))
+    # latent_factor_product = get_latent_factor_product(df)
+    # df = pd.merge(df, latent_factor_product, on=('user_id', 'item_id'))
     item_pop = get_pop(train)
     df = pd.merge(df, item_pop, on='item_id')
     item_pop_news = get_hacker_news(train, item)
     df = pd.merge( df,item_pop_news,on='item_id' )
-    rat_stats = get_item_rat_stats(train)
-    df = pd.merge(df, rat_stats)
+    # rat_stats = get_item_rat_stats(train)
+    # df = pd.merge(df, rat_stats)
 
-    item_index = item.reset_index()[['item_id', 'index','timestamp']]
-    df = pd.merge(df, item_index, on='item_id')
     index = df[['user_id', 'item_id']]
     data = df.drop(['user_id', 'item_id', 'label'], axis=1)
     return index, data
