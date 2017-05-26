@@ -1,18 +1,12 @@
 # coding=utf-8
 """
     为用户推荐最热的咨询，如果用户以前看过不会再推荐
-    物品流行度公式：分别参考了rabbit，hacker news两个网站额排序算法，还有一个是《推荐系统实践》中给出的排序算法
+    物品流行度公式：参考hacker news排序算法，还有一个是《推荐系统实践》中给出的排序算法
 """
 from math import log
-
 import pandas as pd
 import time
 
-
-def rabbit_rank( s,seconds, ):
-        order = log(max(abs(s), 1), 10)
-        sign = 1 if s > 0 else -1 if s < 0 else 0
-        return round(order + sign * seconds / 45000, 7)
 
 def hacker_news_rank(  ):
     #参考自http://www.oschina.net/news/43456/how-hacker-news-ranking-algorithm-works
@@ -44,7 +38,6 @@ def hacker_news_rank(  ):
     rec = rec[['user_id', 'item_id']]
 
     rec.to_csv('../result/result.csv', index=False, header=False)
-
 
 
 def top_pop(  ):
@@ -91,8 +84,7 @@ def help( p ):
     return rec
 
 if __name__ == "__main__":
-    # top_pop()
+    top_pop()
     hacker_news_rank()
-
 
 

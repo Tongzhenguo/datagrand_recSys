@@ -12,9 +12,15 @@ import xgboost as xgb
     正负类选取：用户看过的是正类，负类是从所有物品集随机抽取的，物品集没有对物品去重，故被关注多的商品被选中的概率大
     特征工程：
         用户端有对各品类的交互次数，
-        物品端有发布时间，物品集中的index,阅读次数，3种流行度算法的得分，
+        物品端有
+           发布时间，
+           index,
+           阅读次数，
+           3种流行度算法的得分，
+           隐性评分的avg,max,min,std,中位数
 
 """
+
 def randomSelectTrain( train,flag ):
     path = '../cache/train_{flag}.pkl'.format( flag=flag )
     if os.path.exists( path ):
@@ -129,9 +135,48 @@ def get_pop( tr ):
     item_pop = tr[['item_id', 'pop']].groupby(['item_id'], as_index=False).sum()
     return item_pop
 
+def get_hacker_news( tr,item ):
+    item_action_cnt = \
+    tr[['user_id', 'item_id', 'action_type']].drop_duplicates().groupby(['item_id'], as_index=False).count()[
+        ['item_id', 'action_type']]
+    item_action_cnt.columns = ['item_id', 'action_cnt']
+    item_pop = pd.merge(item[['item_id', 'timestamp']], tr, on='item_id')
+    item_pop = pd.merge(item_action_cnt, item_pop, on='item_id')
+    item_pop['pop'] = item_pop['action_cnt'] / pow((item_pop['action_time'] - item_pop['timestamp']) / 3600,
+                                                   5.8)  # 5.8等于10.8，优于1.8,2.8
+    item_pop = item_pop[['item_id', 'pop']].groupby(['item_id'], as_index=False).sum()
+    return item_pop
+
+def get_action_weight( x):
+    if x == 'view': return 1
+    if x == 'deep_view': return 2
+    if x == 'share':return 8
+    if x == 'comment': return 6
+    if x == 'collect':return 5
+    else:return 1
+
+def get_item_rat_stats(tr):
+    tr['rat'] = tr['action_type'].apply( get_action_weight )
+    tmp = tr[['user_id', 'item_id', 'rat']].drop_duplicates().groupby(['item_id'], as_index=False)
+    rat_avg = tmp.mean()[['item_id', 'rat']]
+    rat_max = tmp.max()[['item_id', 'rat']]
+    rat_min = tmp.min()[['item_id', 'rat']]
+    rat_sum = tmp.sum()[['item_id', 'rat']]
+    df = pd.merge( rat_max,rat_min,on='item_id')
+    df.columns = ['item_id','rat_max','rat_min']
+    df['rat_mid'] = df['rat_max'] + df['rat_min']
+    df['rat_mid'] /= 2
+    df = pd.merge(df, rat_avg, on='item_id')
+    df = pd.merge(df, rat_sum, on='item_id')
+    df.columns = [ 'rat_max','rat_min','rat_mid','rat_avg','item_id','rat_sum']
+    return df
+
+
 def make_train_set():
     train = pd.read_csv('../data/train.csv')
-    train = train[train.action_time >= time.mktime(time.strptime('2017-2-18 18:00:00', '%Y-%m-%d %H:%M:%S'))]
+    start_date = time.mktime(time.strptime('2017-2-18 00:00:00', '%Y-%m-%d %H:%M:%S'))
+    end_date = time.mktime(time.strptime('2017-2-18 12:00:00', '%Y-%m-%d %H:%M:%S'))
+    train = train[(train.action_time <= end_date) & (train.action_time>= start_date)]
     item = pd.read_csv('../data/news_info.csv')
     user = pd.read_csv('../data/candidate.txt')
     train = pd.merge( user,train,on='user_id' )
@@ -145,6 +190,10 @@ def make_train_set():
     df = pd.merge(df, latent_factor_product, on=( 'user_id','item_id' ))
     item_pop = get_pop( train )
     df = pd.merge( df,item_pop,on='item_id' )
+    item_pop_news = get_hacker_news(train, item)
+    df = pd.merge( df,item_pop_news,on='item_id' )
+    rat_stats = get_item_rat_stats(train)
+    df = pd.merge(df, rat_stats)
 
     item_index = item.reset_index()[['item_id','index','timestamp']]
     df = pd.merge(df, item_index, on='item_id')
@@ -155,7 +204,7 @@ def make_train_set():
 
 def make_test_data():
     train = pd.read_csv('../data/train.csv')
-    train = train[train.action_time >= time.mktime(time.strptime('2017-2-18 18:00:00', '%Y-%m-%d %H:%M:%S'))]
+    train = train[train.action_time >= time.mktime(time.strptime('2017-2-18 12:00:00', '%Y-%m-%d %H:%M:%S'))]
     item = pd.read_csv('../data/news_info.csv')
     user = pd.read_csv('../data/candidate.txt')
     train = pd.merge(user, train, on='user_id')
@@ -170,6 +219,10 @@ def make_test_data():
     df = pd.merge(df, latent_factor_product, on=('user_id', 'item_id'))
     item_pop = get_pop(train)
     df = pd.merge(df, item_pop, on='item_id')
+    item_pop_news = get_hacker_news(train, item)
+    df = pd.merge( df,item_pop_news,on='item_id' )
+    rat_stats = get_item_rat_stats(train)
+    df = pd.merge(df, rat_stats)
 
     item_index = item.reset_index()[['item_id', 'index','timestamp']]
     df = pd.merge(df, item_index, on='item_id')
@@ -191,7 +244,7 @@ def xgb_train( ):
     dtest = xgb.DMatrix(X_test, label=y_test)
     param = {'max_depth': 3,
              'min_child_weight': 2, 'gamma': 0, 'subsample': 0.6, 'colsample_bytree': 0.8,
-              'eta': 1, 'lambda': 5,  # L2惩罚系数 'scale_pos_weight': scale_pos_weight,
+              'eta': 0.1, 'lambda': 5,  # L2惩罚系数 'scale_pos_weight': scale_pos_weight,
              'objective': 'binary:logistic', 'eval_metric': 'auc',
              'early_stopping_rounds': 100,  # eval 得分没有继续优化 就停止了
              'seed': 1990, 'nthread': 4, 'silent': 1

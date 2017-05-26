@@ -163,7 +163,7 @@ def Recommendation(k=5):
     oldrec.columns = ['user_id', 'item_id']
     rec = rec.append(oldrec)
 
-    rec.drop_duplicates('user_id').to_csv('../result/result.csv', index=None, header=None) #0.011010
+    rec.drop_duplicates('user_id').to_csv('../result/result.csv', index=None, header=None)
 
 if __name__ == "__main__":
 
