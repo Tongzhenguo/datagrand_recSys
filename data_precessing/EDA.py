@@ -173,10 +173,14 @@ def show_item_cate_dummy( all_news_info ):
     df = pd.concat( [ all_news_info[['item_id','timestamp']],df_dummy ],axis=1,join='inner' )
     return df
 
-# def show_item_pv_hh( train,hour_list=[1,2,3,4,5,6,12,24,72] ):
-#     for i in hour_list:
-#         time.mktime( time.strftime('') )
-#         train[ train['action_time']> ]
+def user_action_count(  ):
+    train = pd.read_csv('../data/train.csv')
+    users = pd.read_csv('../data/candidate.txt')
+    train = pd.merge(train,users,on='user_id')
+    train = train[['user_id','action_type','action_time']].groupby(['user_id','action_type']).count().unstack().fillna(0)
+    train.columns = [str(type)+'_count' for type in ['view','deep_view','share','comment','collect'] ]
+    train = train.reset_index()
+    return train
 
 if __name__ == "__main__":
     # desc()
@@ -184,4 +188,6 @@ if __name__ == "__main__":
     # show_item_display_time()
     # show_cate_diff()
     # show_hh_pv()
-    do_test()
+    # do_test()
+    uac = user_action_count()
+    len(uac[uac.view_count > 0])

@@ -9,19 +9,23 @@ from sklearn.model_selection import train_test_split
 import xgboost as xgb
 
 """
-    正负类选取：用户看过的是正类，负类是从所有物品集随机抽取的，物品集没有对物品去重，故被关注多的商品被选中的概率大
+    正负类选取：
+        用户看过的是正类，负类是从所有物品集随机抽取的，物品集没有对物品去重，故被关注多的商品被选中的概率大
+        时间窗口的选取：每日的早高峰（6-9），晚高峰（19-22），工作时段（9-19）
     特征工程：
-        用户端有对各品类的交互次数，
+        用户端有
+            对各品类的交互次数（品类偏好），
+            用户各行为总计（潜水型，收藏党，评论灌水党，分享党）
         物品端有
            发布时间，
            阅读次数，
-           2种流行度排名，
-           隐性评分的avg,max,min,std,中位数
-        35个隐变量的乘积
+
+
+
 """
 
-def randomSelectTrain( train,flag ):
-    path = '../cache/train_{flag}.pkl'.format( flag=flag )
+def randomSelectTrain( train,start,end ):
+    path = '../cache/train_{st}_{ed}.pkl'.format( st=start,ed=end )
     if os.path.exists( path ):
         data = pickle.load(open(path, "rb"))
     else:
@@ -32,9 +36,10 @@ def randomSelectTrain( train,flag ):
         label_list = []
         items_pool = list(train['item_id'].values)
         rec = dict()
-        for user, group in train.groupby(['user_id']):
-            print( len(user_list) )
-            viewed_item = list(group['item_id'].unique() )
+        print 'recent k items'
+        train = train.sort_values(['action_time'],ascending=False)[['user_id','item_id']].drop_duplicates()
+        for user, group in train.groupby(['user_id'],sort=False):
+            viewed_item = list( group['item_id'].head(5).values )
             for item in viewed_item:
                 rec[item] = 1
                 user_list.append(user)
@@ -63,34 +68,6 @@ def randomSelectTrain( train,flag ):
         pickle.dump( data,open(path,'wb'),True )
     return data
 
-
-def show_item_display_time(train, all_news_info):
-    item_id_list = []
-    start_time_list = []
-    end_time_list = []
-    df = pd.DataFrame()
-    for item_id, group in train.groupby(['item_id'], as_index=False):
-        start = group['action_time'].min()
-        end = group['action_time'].max()
-        item_id_list.append(item_id)
-        start_time_list.append(start)
-        end_time_list.append(end)
-    df['item_id'] = item_id_list
-    df['start_time'] = start_time_list
-    df['end_time'] = end_time_list
-    df['diff'] = df['end_time'] - df['start_time']
-    df['start_time'] = df['start_time'].apply(lambda x: time.strftime('%Y%m%d%H', time.localtime(x)))
-    df['end_time'] = df['end_time'].apply(lambda x: time.strftime('%Y%m%d%H', time.localtime(x)))
-
-    df_dummy = pd.get_dummies(all_news_info['cate_id'], prefix='cate')
-    df_dummy = pd.concat([all_news_info[['item_id', 'timestamp']], df_dummy], axis=1, join='inner')
-
-    df = pd.merge(df_dummy, df, on='item_id')
-    df['timestamp'] = df['timestamp'].apply(lambda x: time.strftime('%Y%m%d%H', time.localtime(x)))
-
-    return df
-
-
 def show_user_cate(train):
     cate_list = list( train['cate_id'].unique() )
     cate_list.sort()
@@ -99,54 +76,17 @@ def show_user_cate(train):
     train = train.reset_index()
     return train
 
+def user_action_count( train,user ):
+    train = pd.merge(train,user,on='user_id')
+    train = train[['user_id','action_type','action_time']].groupby(['user_id','action_type']).count().unstack().fillna(0)
+    train.columns = [str(type)+'_count' for type in ['view','deep_view','share','comment','collect'] ]
+    train = train.reset_index()
+    return train
+
 def get_item_action_count( train ):
     train = train[[ 'item_id','user_id' ]].groupby( ['item_id'],as_index=False ).count()
     train.columns = ['item_id','action_count']
     return train
-
-def get_latent_factor_product( df ):
-    print(' 读取用户和物品矩阵 ')
-    user_mat = pd.read_csv('../data/user_mat.csv')
-    item_mat = pd.read_csv('../data/item_mat.csv')
-    user = pd.read_csv('../data/candidate.txt')
-    item_all = pd.read_csv('../data/all_news_info.csv')
-
-    print(' 将uniqid重新映射成user_id,item_id ')
-    uniqid_uid = user[['user_id']].sort_values(['user_id'])
-    uniqid_uid.index = range(len(uniqid_uid))
-    uniqid_uid = uniqid_uid['user_id'].to_dict()
-
-    uniqid_iid = item_all[['item_id']].sort_values(['item_id'])
-    uniqid_iid.index = range(len(uniqid_iid))
-    uniqid_iid = uniqid_iid['item_id'].to_dict()
-
-    user_mat['user_id'] = user_mat['uniqid'].apply( lambda x:uniqid_uid[x] )
-    item_mat['item_id'] = item_mat['uniqid'].apply( lambda x: uniqid_iid[x] )
-    df = pd.merge(df, user_mat, on='user_id')
-    df = pd.merge( df,item_mat,on='item_id' )
-    feat = ['user_id','item_id']+[ "factor_product_"+str(i) for i in range(35) ]
-    for i in range(35):
-        df[ "factor_product_"+str(i) ] = df[ 'factor_'+str(i)+'_x' ] * df[ 'factor_'+str(i)+'_y' ]
-    return df[ feat ]
-
-def get_pop( tr ):
-    tr['pop'] = tr['action_time'].apply(lambda t: 1 / (1.0 + 0.1 * (1487433599 - t)))
-    item_pop = tr[['item_id', 'pop']].groupby(['item_id'], as_index=False).sum()
-    item_pop['time_rank'] = item_pop['pop'].rank()
-    return item_pop
-
-def get_hacker_news( tr,item ):
-    item_action_cnt = \
-    tr[['user_id', 'item_id', 'action_type']].drop_duplicates().groupby(['item_id'], as_index=False).count()[
-        ['item_id', 'action_type']]
-    item_action_cnt.columns = ['item_id', 'action_cnt']
-    item_pop = pd.merge(item[['item_id', 'timestamp']], tr, on='item_id')
-    item_pop = pd.merge(item_action_cnt, item_pop, on='item_id')
-    item_pop['pop'] = item_pop['action_cnt'] / pow((item_pop['action_time'] - item_pop['timestamp']) / 3600,
-                                                   5.8)  # 5.8等于10.8，优于1.8,2.8
-    item_pop = item_pop[['item_id', 'pop']].groupby(['item_id'], as_index=False).sum()
-    item_pop['pop_rank'] = item_pop['pop'].rank()
-    return item_pop
 
 def get_action_weight( x):
     if x == 'view': return 1
@@ -156,72 +96,59 @@ def get_action_weight( x):
     if x == 'collect':return 5
     else:return 1
 
-def get_item_rat_stats(tr):
-    tr['rat'] = tr['action_type'].apply( get_action_weight )
-    tmp = tr[['user_id', 'item_id', 'rat']].drop_duplicates().groupby(['item_id'], as_index=False)
-    rat_avg = tmp.mean()[['item_id', 'rat']]
-    rat_max = tmp.max()[['item_id', 'rat']]
-    rat_min = tmp.min()[['item_id', 'rat']]
-    rat_sum = tmp.sum()[['item_id', 'rat']]
-    df = pd.merge( rat_max,rat_min,on='item_id')
-    df.columns = ['item_id','rat_max','rat_min']
-    df['rat_mid'] = df['rat_max'] + df['rat_min']
-    df['rat_mid'] /= 2
-    df = pd.merge(df, rat_avg, on='item_id')
-    df = pd.merge(df, rat_sum, on='item_id')
-    df.columns = [ 'rat_max','rat_min','rat_mid','rat_avg','item_id','rat_sum']
-    return df
-
 
 def make_train_set():
     train = pd.read_csv('../data/train.csv')
-    start_date = time.mktime(time.strptime('2017-2-18 00:00:00', '%Y-%m-%d %H:%M:%S'))
-    end_date = time.mktime(time.strptime('2017-2-18 12:00:00', '%Y-%m-%d %H:%M:%S'))
-    train = train[(train.action_time <= end_date) & (train.action_time>= start_date)]
     item = pd.read_csv('../data/news_info.csv')
     user = pd.read_csv('../data/candidate.txt')
-    train = pd.merge( user,train,on='user_id' )
-    label = randomSelectTrain(train,"train_all_item")
+    combine_df = pd.DataFrame()
+    for w in [ ['2017-2-16 06:00:00','2017-2-16 09:00:00'],
+               ['2017-2-16 09:00:00', '2017-2-16 19:00:00'],
+               ['2017-2-16 19:00:00', '2017-2-16 22:00:00'],
+               ['2017-2-17 06:00:00', '2017-2-17 09:00:00'],
+               ['2017-2-17 09:00:00', '2017-2-17 19:00:00'],
+               ['2017-2-17 19:00:00', '2017-2-17 22:00:00'],
+               ['2017-2-18 06:00:00', '2017-2-18 09:00:00'],
+               ['2017-2-18 09:00:00', '2017-2-18 19:00:00'],
+               ]:
 
-    user_feat = show_user_cate(train)
-    df = pd.merge(label, user_feat, on='user_id')
-    item_action_count = get_item_action_count(train)
-    df = pd.merge( df,item_action_count,on='item_id' )
-    # latent_factor_product = get_latent_factor_product(df)
-    # df = pd.merge(df, latent_factor_product, on=( 'user_id','item_id' ))
-    item_pop = get_pop( train )
-    df = pd.merge( df,item_pop,on='item_id' )
-    item_pop_news = get_hacker_news(train, item)
-    df = pd.merge( df,item_pop_news,on='item_id' )
-    # rat_stats = get_item_rat_stats(train)
-    # df = pd.merge(df, rat_stats)
+        start_date = time.mktime(time.strptime(w[0], '%Y-%m-%d %H:%M:%S'))
+        end_date = time.mktime(time.strptime(w[1], '%Y-%m-%d %H:%M:%S'))
+        train = train[(train.action_time <= end_date) & (train.action_time>= start_date)]
+        train = pd.merge( user,train,on='user_id' )
+        label = randomSelectTrain(train,start_date,end_date)
 
-    index = df[['user_id','item_id']]
-    label = df[['label']]
-    data = df.drop(['user_id','item_id','label'],axis=1)
+        user_feat = show_user_cate(train)
+        df = pd.merge(label, user_feat, on='user_id')
+        uac = user_action_count( train,user )
+        df = pd.merge( df,uac,on='user_id' )
+        item_action_count = get_item_action_count(train)
+        df = pd.merge( df,item_action_count,on='item_id' )
+
+        combine_df = combine_df.append( df )
+
+    index = combine_df[['user_id','item_id']]
+    label = combine_df[['label']]
+    data = combine_df.drop(['user_id','item_id','label'],axis=1)
     return index,label,data
 
 def make_test_data():
     train = pd.read_csv('../data/train.csv')
-    train = train[train.action_time >= time.mktime(time.strptime('2017-2-18 12:00:00', '%Y-%m-%d %H:%M:%S'))]
+    start_date = time.mktime(time.strptime('2017-2-18 19:00:00', '%Y-%m-%d %H:%M:%S'))
+    end_date = time.mktime(time.strptime('2017-2-18 22:00:00', '%Y-%m-%d %H:%M:%S'))
+    train = train[(train.action_time >= start_date) & (train.action_time <= end_date)]
     item = pd.read_csv('../data/news_info.csv')
     user = pd.read_csv('../data/candidate.txt')
     train = pd.merge(user, train, on='user_id')
     train = pd.merge( item[['item_id']],train,on='item_id' )
-    label = randomSelectTrain(train,"test_item")
+    label = randomSelectTrain(train,start_date,end_date)
 
     user_feat = show_user_cate(train)
     df = pd.merge(label[ label['label']==0 ], user_feat, on='user_id')
+    uac = user_action_count(train, user)
+    df = pd.merge(df, uac, on='user_id')
     item_action_count = get_item_action_count(train)
     df = pd.merge(df, item_action_count, on='item_id')
-    # latent_factor_product = get_latent_factor_product(df)
-    # df = pd.merge(df, latent_factor_product, on=('user_id', 'item_id'))
-    item_pop = get_pop(train)
-    df = pd.merge(df, item_pop, on='item_id')
-    item_pop_news = get_hacker_news(train, item)
-    df = pd.merge( df,item_pop_news,on='item_id' )
-    # rat_stats = get_item_rat_stats(train)
-    # df = pd.merge(df, rat_stats)
 
     index = df[['user_id', 'item_id']]
     data = df.drop(['user_id', 'item_id', 'label'], axis=1)
@@ -230,7 +157,7 @@ def make_test_data():
 def xgb_train( ):
     i = 0
     print('=========================training==============================')
-    index,label,data = make_train_set()
+    index,label,data = make_train_set(  )
     X_train, X_test, y_train, y_test = train_test_split(data, label, test_size=0.2, random_state=1990)
     # see how many neg/pos sample
     label = label.values
@@ -301,7 +228,7 @@ def xgb_sub(  ):
     rec = rec.append(oldrec)
 
     rec = rec.drop_duplicates('user_id')
-    rec.to_csv('../result/result20170505.csv', index=None,header=None)
+    rec.to_csv('../result/result_xgb.csv', index=None,header=None)
 
 if __name__ == '__main__':
     xgb_train()
