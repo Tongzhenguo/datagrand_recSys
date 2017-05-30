@@ -36,7 +36,7 @@ def randomSelectTrain( train,start,end ):
         label_list = []
         items_pool = list(train['item_id'].values)
         rec = dict()
-        print 'recent k items'
+        print('recent k items')
         train = train.sort_values(['action_time'],ascending=False)[['user_id','item_id']].drop_duplicates()
         for user, group in train.groupby(['user_id'],sort=False):
             viewed_item = list( group['item_id'].head(5).values )
@@ -76,7 +76,8 @@ def show_user_cate(train):
     train = train.reset_index()
     return train
 
-def user_action_count( train,user ):
+def user_action_count(user ):
+    train = pd.read_csv('../data/train.csv')
     train = pd.merge(train,user,on='user_id')
     train = train[['user_id','action_type','action_time']].groupby(['user_id','action_type']).count().unstack().fillna(0)
     train.columns = [str(type)+'_count' for type in ['view','deep_view','share','comment','collect'] ]
@@ -103,13 +104,13 @@ def make_train_set():
     user = pd.read_csv('../data/candidate.txt')
     combine_df = pd.DataFrame()
     for w in [ ['2017-2-16 06:00:00','2017-2-16 09:00:00'],
-               ['2017-2-16 09:00:00', '2017-2-16 19:00:00'],
-               ['2017-2-16 19:00:00', '2017-2-16 22:00:00'],
-               ['2017-2-17 06:00:00', '2017-2-17 09:00:00'],
-               ['2017-2-17 09:00:00', '2017-2-17 19:00:00'],
-               ['2017-2-17 19:00:00', '2017-2-17 22:00:00'],
-               ['2017-2-18 06:00:00', '2017-2-18 09:00:00'],
-               ['2017-2-18 09:00:00', '2017-2-18 19:00:00'],
+               # ['2017-2-16 09:00:00', '2017-2-16 19:00:00'],
+               # ['2017-2-16 19:00:00', '2017-2-16 22:00:00'],
+               # ['2017-2-17 06:00:00', '2017-2-17 09:00:00'],
+               # ['2017-2-17 09:00:00', '2017-2-17 19:00:00'],
+               # ['2017-2-17 19:00:00', '2017-2-17 22:00:00'],
+               # ['2017-2-18 06:00:00', '2017-2-18 09:00:00'],
+               # ['2017-2-18 09:00:00', '2017-2-18 19:00:00'],
                ]:
 
         start_date = time.mktime(time.strptime(w[0], '%Y-%m-%d %H:%M:%S'))
@@ -120,13 +121,14 @@ def make_train_set():
 
         user_feat = show_user_cate(train)
         df = pd.merge(label, user_feat, on='user_id')
-        uac = user_action_count( train,user )
-        df = pd.merge( df,uac,on='user_id' )
+        # uac = user_action_count( user )
+        # df = pd.merge( df,uac,on='user_id' )
         item_action_count = get_item_action_count(train)
         df = pd.merge( df,item_action_count,on='item_id' )
 
         combine_df = combine_df.append( df )
 
+    combine_df = combine_df.dropna()
     index = combine_df[['user_id','item_id']]
     label = combine_df[['label']]
     data = combine_df.drop(['user_id','item_id','label'],axis=1)
@@ -145,8 +147,8 @@ def make_test_data():
 
     user_feat = show_user_cate(train)
     df = pd.merge(label[ label['label']==0 ], user_feat, on='user_id')
-    uac = user_action_count(train, user)
-    df = pd.merge(df, uac, on='user_id')
+    # uac = user_action_count( user)
+    # df = pd.merge(df, uac, on='user_id')
     item_action_count = get_item_action_count(train)
     df = pd.merge(df, item_action_count, on='item_id')
 
@@ -163,7 +165,6 @@ def xgb_train( ):
     label = label.values
     print( "neg:{0},pos:{1}".format(len(label[label == 0]), len(label[label == 1])) )
     # scale_pos_weight = (len(label[label == 0])) / float(len(label[label == 1]))
-
     dtrain = xgb.DMatrix(X_train, label=y_train)
     dtest = xgb.DMatrix(X_test, label=y_test)
     param = {'max_depth': 3,
