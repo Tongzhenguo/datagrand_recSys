@@ -17,11 +17,56 @@ import xgboost as xgb
             对各品类的交互次数，
             用户各行为统计
             用户view占总用户view的比例
+            用户各cate view所占的比例
         物品端有
            发布时间，
            阅读次数:分时段
+           物品阅读次数
+           物品占cate总view的比例
+
 
 """
+
+def get_user_cate_view_ratio_feat(  ):
+    tr = pd.read_csv('../data/train.csv')
+    cate_list = ['1_1','1_10','1_11','1_12','1_13',
+                 '1_14','1_15','1_16','1_17',
+                 '1_18','1_19','1_2','1_23',
+                 '1_24','1_27','1_28','1_3',
+                 '1_4','1_5','1_6','1_7',
+                 '1_8','1_9','3_1','3_13',
+                 '3_15','3_19','3_2','3_20',
+                 '3_23','3_3','3_6','3_7',
+                 '3_8','3_9','4_1','6_1']
+
+    user_cate_view_ratio = tr[tr.action_type.isin( ['view'] )][['user_id','cate_id','action_type']].groupby( ['user_id','cate_id'] ).count().unstack().fillna(0)
+    user_cate_view_ratio.columns = ['cate_uniq_'+str(i) for i in range(len(cate_list)) ]
+    user_cate_view_ratio = user_cate_view_ratio.reset_index()
+    user_view = tr[tr.action_type.isin(['view'])][['user_id', 'action_type']].groupby(['user_id'], as_index=False).count()
+    user_view.columns = ['user_id','all_view']
+    user_cate_view_ratio = pd.merge( user_cate_view_ratio,user_view,on='user_id' )
+    for i in range(len(cate_list)):
+        user_cate_view_ratio['cate_view_{uniq}_ratio'.format(uniq=i)] = user_cate_view_ratio['cate_uniq_{uniq}'.format(uniq=i)] / user_cate_view_ratio['all_view']
+    return user_cate_view_ratio[['user_id']+['cate_view_{uniq}_ratio'.format(uniq=i) for i in range(len(cate_list))]]
+
+#这里物品是用的test集的
+def get_item_count():
+    te = pd.read_csv('../data/test.csv')
+    item_count = te[['item_id','user_id']].groupby(['item_id'],as_index=False).count()
+    item_count.columns = ['item_id','item_count']
+    return item_count
+
+def get_item_cate_ratio():
+    item_cnt = get_item_count()
+    te = pd.read_csv('../data/test.csv')
+    item = pd.read_csv('../data/news_info.csv')
+    te = pd.merge( te,item,on='item_id' )
+    cate_count = te[['cate_id','item_id', 'user_id']].groupby(['cate_id','item_id'], as_index=False).count()
+    cate_count.columns = ['cate_id','item_id','cate_count']
+    item_cate_ratio = pd.merge( item_cnt,cate_count,on='item_id' )[['item_id','item_count','cate_count']]
+    item_cate_ratio['cate_ratio'] = item_cate_ratio['item_count'] / item_cate_ratio['cate_count']
+    return item_cate_ratio[['item_id','cate_ratio']]
+
 
 def randomSelectTrain( train,start,end ):
     path = '../cache/train_{st}_{ed}.pkl'.format( st=start,ed=end )
@@ -38,7 +83,7 @@ def randomSelectTrain( train,start,end ):
         print 'recent k items'
         train = train.sort_values(['action_time'],ascending=False)[['user_id','item_id']].drop_duplicates()
         for user, group in train.groupby(['user_id'],sort=False):
-            viewed_item = list( group['item_id'].head(5).values )
+            viewed_item = list( group['item_id'].head(100).values )
             for item in viewed_item:
                 rec[item] = 1
                 user_list.append(user)
@@ -143,6 +188,14 @@ def make_train_set():
     df = pd.merge(df, uwr, on='user_id')
     item_action_count = get_item_action_count()
     df = pd.merge( df,item_action_count,on='item_id' )
+    #新加三个特征
+    ucvr = get_user_cate_view_ratio_feat()
+    df = pd.merge( df,ucvr,on='user_id' )
+    ic = get_item_count()
+    df = pd.merge( df,ic,on='item_id' )
+    icr = get_item_cate_ratio()
+    df = pd.merge( df,icr,on='item_id' )
+
 
     index = df[['user_id','item_id']]
     label = df[['label']]
@@ -150,6 +203,10 @@ def make_train_set():
     return index,label,data
 
 def make_test_data():
+    #直接构造test中的候选集：
+    #使用如下规则：1.过滤出现少于5次的 2.选出每品类的排名前10 3.选出全品类的top10
+
+
     train = pd.read_csv('../data/train.csv')
     start_date = time.mktime(time.strptime('2017-2-18 19:00:00', '%Y-%m-%d %H:%M:%S'))
     end_date = time.mktime(time.strptime('2017-2-18 22:00:00', '%Y-%m-%d %H:%M:%S'))
@@ -168,6 +225,13 @@ def make_test_data():
     df = pd.merge(df, uwr, on='user_id')
     item_action_count = get_item_action_count()
     df = pd.merge(df, item_action_count, on='item_id')
+    #新加三个特征
+    ucvr = get_user_cate_view_ratio_feat()
+    df = pd.merge( df,ucvr,on='user_id' )
+    ic = get_item_count()
+    df = pd.merge( df,ic,on='item_id' )
+    icr = get_item_cate_ratio()
+    df = pd.merge( df,icr,on='item_id' )
 
     index = df[['user_id', 'item_id']]
     data = df.drop(['user_id', 'item_id', 'label'], axis=1)
@@ -193,7 +257,7 @@ def xgb_train( ):
              'seed': 1990, 'nthread': 4, 'silent': 1
              }
     evallist = [(dtest, 'eval'), (dtrain, 'train')]
-    bst = xgb.train(param, dtrain, num_boost_round=500, evals=evallist)
+    bst = xgb.train(param, dtrain, num_boost_round=1000, evals=evallist)
 
     bst.save_model(os.path.join('../model', ('xgb%02d.model' % i)))
     print('save feature score and feature information')
@@ -233,7 +297,7 @@ def xgb_sub(  ):
     rec['user_id'] = user_list
     rec['item_id'] = rec_items_list
 
-    print('还有部分的冷启动用户,推荐test中的topHot5')  # 这里也可改进
+    print('还有部分的冷启动用户,推荐test中的topHot5')
     users = pd.read_csv('../data/candidate.txt')
     test = pd.read_csv('../data/test.csv')
     topHot = \
@@ -247,7 +311,7 @@ def xgb_sub(  ):
     rec = rec.append(oldrec)
 
     rec = rec.drop_duplicates('user_id')
-    rec.to_csv('../result/result20170505.csv', index=None,header=None)
+    rec.to_csv('../result/result.csv', index=None,header=None)
 
 if __name__ == '__main__':
     xgb_train()
