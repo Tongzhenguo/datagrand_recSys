@@ -8,41 +8,21 @@ import time
 
 """
     基于物品的协同过滤算法，相似度是共现矩阵：
-    sim = iid1_iid2_cnt / sqrt( iid1**2 * iid2**2 )
+    sim = iid1_iid2_cnt / sqrt( iid1 * iid2 )
     去掉已经view的
     有趣的是，全量计算（16日起）并没有只计算最近6小时（18日18时起）的物品相似度效果好，这个是之前测试的
 
 """
 
-def get_action_weight( x):
-    if x == 'view': return 1
-    if x == 'deep_view': return 5
-    if x == 'share':return 10
-    if x == 'comment': return 5
-    if x == 'collect':return 15
-    else:return 1
-
-def get_rating_matrix( train ):
+def get_rating_matrix( train,test ):
     path = '../cache/rating_all_test.pkl'
     if os.path.exists(path):
         train = pickle.load(open(path, "rb"))
     else:
-        # start = time.mktime(time.strptime('2017-2-18 18:00:00', '%Y-%m-%d %H:%M:%S'))  # 测试最近6个小时的，线上分数最高
-        # train = pd.read_csv('../data/train.csv')
-        # train = train[(train['action_time'] >= start)][['user_id', 'item_id', 'action_type']]
-
-        # item_display = pd.read_csv('../data/item_display.csv')
-        # item_display['end_time'] = item_display['end_time'].apply(
-        #     lambda x: time.mktime(time.strptime(x, '%Y%m%d %H:%M:%S')))
-        # 选择距end时间2小时内被view过的，其余的训练集item假定已经失去了时效，不再推荐
-        # end = time.mktime(time.strptime('2017-2-18 22:00:00', '%Y-%m-%d %H:%M:%S'))
-        # news = item_display[(item_display['end_time'] >= end)][['item_id']]
-        # train = pd.merge(train, news, on='item_id')[['user_id', 'item_id', 'action_type']]
-
-        # train['weight'] = train['action_type'].apply(get_action_weight)
-        # train = train[['user_id', 'item_id', 'weight']].groupby(['user_id', 'item_id'], as_index=False).sum()
-        train['weight'] = 1
-        train = train[['user_id', 'item_id', 'weight']].drop_duplicates()
+        #明显，在test中出现的是还有时效的，所以只要test和train做交集就可以了
+        train = pd.merge( train,test[['item_id']],on='item_id' )
+        train = train[train.action_type=='deep_view'][['user_id','item_id']].drop_duplicates()
+        # print len(train),train['item_id'].unique().shape[0]
         pickle.dump(train, open(path, 'wb'), True)  # dump 时如果指定了 protocol 为 True，压缩过后的文件的大小只有原来的文件的 30%
     return train
 
@@ -70,13 +50,13 @@ def get_concur_mat( train ):
         pickle.dump(sim_mat, open(path, 'wb'), True)
     return sim_mat
 
-def get_concur_sim( train ):
+def get_concur_sim( train,test ):
     path = "../cache/concur_sim_mat_test.pkl"
     if os.path.exists(path):
         sim_mat = pickle.load(open(path, "rb"))
     else:
         concur_mat = get_concur_mat( train )
-        rat_mat = get_rating_matrix( train )
+        rat_mat = get_rating_matrix( train,test )
         item_vector = rat_mat[['item_id','user_id']].groupby(['item_id'],as_index=False).count()
         item_vector.index = item_vector['item_id']
         item_vector.columns = ['item_id','count']
@@ -109,65 +89,62 @@ def help( p ):
     rec = " ".join(rec[:5])
     return rec
 
-def Recommendation(k=5):
-    te = pd.read_csv('../data/test.csv')[['item_id']].drop_duplicates()
+def Recommendation(k=10):
+    test = pd.read_csv('../data/test.csv')
     train = pd.read_csv('../data/train.csv')
-    train = pd.merge( te,train,on='item_id' )
+    users = pd.read_csv('../data/candidate.txt')
+    train = pd.merge( test,train,on='item_id' )
     train['item_id'] = train['item_id'].apply(str)
     print('计算评分矩阵')
-    rate_mat = get_rating_matrix( train )
+    rate_mat = get_rating_matrix( train,test )
     rate_mat['item_id'] = rate_mat['item_id'].apply(str)
     print('计算相似度')
-    iid_iid_sim = get_concur_sim( train )
-    # iid_iid_sim['item1'] = iid_iid_sim['item1'].apply(str)
-    # iid_iid_sim['item2'] = iid_iid_sim['item2'].apply(str)
-    # user_list = []
-    # viewed_list = []
-    # for user, group in train[['user_id', 'item_id']].groupby(['user_id']):
-    #     user_list.append(user)
-    #     viewed_list.append(" ".join(list(group['item_id'].values)))
-    # user_viewed = pd.DataFrame()
-    # user_viewed['user_id'] = user_list
-    # user_viewed['item_id'] = viewed_list
-    #
-    # rec = pd.DataFrame()
-    # user_list = []
-    # rec_items_list = []
-    # users = pd.read_csv('../data/candidate.txt')
-    # df = pd.merge(users, rate_mat, on='user_id')
-    # df = pd.merge(df, iid_iid_sim, left_on='item_id', right_on='item1')
-    # df['score'] = df['weight'] * df['sim']
-    # df = df[['user_id', 'item2', 'score']].sort_values(['user_id', 'score'], ascending=False)
-    # print('为每个用户推荐')
-    # for user_id, group in df.groupby(['user_id'], as_index=False, sort=False):
-    #     rec_items = " ".join(map(str, list(group['item2'].values)))
-    #
-    #     user_list.append(user_id)
-    #     rec_items_list.append(rec_items)
-    # rec['user_id'] = user_list
-    # rec['item_id'] = rec_items_list
-    #
-    # print('过滤掉用户已经看过的')
-    # rec = pd.merge(rec, user_viewed, how='left', on='user_id').fillna("")  # item_view
-    # rec['item_id'] = rec['item_id_x'] + "," + rec['item_id_y']
-    # rec['item_id'] = rec['item_id'].apply(help)
-    # rec = rec[['user_id', 'item_id']]
-    #
-    # print('还有部分用户没关注过物品候选集,推荐test中的topHot5')
-    # users = pd.read_csv('../data/candidate.txt')
-    # test = pd.read_csv('../data/test.csv')
-    # topHot = \
-    #     test.groupby(['item_id'], as_index=False).count().sort_values(['user_id'], ascending=False).head(5)[
-    #     'item_id'].values
-    # oldrec = users
-    # oldrec['oldrec_item'] = [" ".join( map( str,list(topHot) ) )] * len(oldrec)
-    # oldrec = pd.merge(oldrec, rec, how='left', on='user_id', ).fillna(0)
-    # oldrec = oldrec[oldrec.item_id == 0][['user_id', 'oldrec_item']]
-    # oldrec.columns = ['user_id', 'item_id']
-    # rec = rec.append(oldrec)
-    #
-    # rec.drop_duplicates('user_id').to_csv('../result/result.csv', index=None, header=None)
+    iid_iid_sim = get_concur_sim( train,test )
+    iid_iid_sim['item1'] = iid_iid_sim['item1'].apply(str)
+    iid_iid_sim['item2'] = iid_iid_sim['item2'].apply(str)
+    user_list = []
+    viewed_list = []
+    for user, group in train[['user_id', 'item_id']].groupby(['user_id']):
+        user_list.append(user)
+        viewed_list.append(" ".join(list(group['item_id'].values)))
+    user_viewed = pd.DataFrame()
+    user_viewed['user_id'] = user_list
+    user_viewed['item_id'] = viewed_list
+
+    rec = pd.DataFrame()
+    user_list = []
+    rec_items_list = []
+    df = pd.merge(users, rate_mat, on='user_id')
+    df = pd.merge(df, iid_iid_sim, left_on='item_id', right_on='item1')
+    df['score'] = df['weight'] * df['sim']
+    df = df[['user_id', 'item2', 'score']].sort_values(['user_id', 'score'], ascending=False)
+    print('为每个用户推荐')
+    for user_id, group in df.groupby(['user_id'], as_index=False, sort=False):
+        rec_items = " ".join(map(str, list(group['item2'].values)))
+
+        user_list.append(user_id)
+        rec_items_list.append(rec_items)
+    rec['user_id'] = user_list
+    rec['item_id'] = rec_items_list
+
+    print('过滤掉用户已经看过的')
+    rec = pd.merge(rec, user_viewed, how='left', on='user_id').fillna("")  # item_view
+    rec['item_id'] = rec['item_id_x'] + "," + rec['item_id_y']
+    rec['item_id'] = rec['item_id'].apply(help)
+    rec = rec[['user_id', 'item_id']]
+
+    print('还有部分用户没关注过物品候选集,推荐test中的topHot5')
+    topHot = \
+        test.groupby(['item_id'], as_index=False).count().sort_values(['user_id'], ascending=False).head(5)[
+        'item_id'].values
+    oldrec = users
+    oldrec['oldrec_item'] = [" ".join( map( str,list(topHot) ) )] * len(oldrec)
+    oldrec = pd.merge(oldrec, rec, how='left', on='user_id', ).fillna(0)
+    oldrec = oldrec[oldrec.item_id == 0][['user_id', 'oldrec_item']]
+    oldrec.columns = ['user_id', 'item_id']
+    rec = rec.append(oldrec)
+
+    rec.drop_duplicates('user_id').to_csv('../result/result_cf.csv', index=None, header=None)
 
 if __name__ == "__main__":
-
     Recommendation()
